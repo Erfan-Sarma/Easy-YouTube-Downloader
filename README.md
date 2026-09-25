@@ -1,21 +1,22 @@
 # Easy YouTube Downloader
 
-A simple Google Colab-based YouTube downloader for individual videos and playlists, including very large playlists.
+A simple Google Colab-based YouTube downloader for individual videos, multiple targets, and playlists, including very large playlists.
 
-The notebook provides a straightforward interface for downloading YouTube content to Google Drive, with quality selection and persistent playlist progress so completed downloads can be continued across interrupted Google Colab sessions.
+The notebook provides a straightforward interface for downloading YouTube content directly to Google Drive, with quality selection, automatic retry recovery, subtitle extraction, and persistent playlist progress so completed downloads can be continued across interrupted Google Colab sessions.
 
 ## Features
 
-* Download individual YouTube videos
-* Download YouTube playlists
+* Download individual YouTube videos, playlists, or multiple links separated by `+`
 * Designed to handle very large playlists
+* **Download Failure-Retry Mechanism**: Automatically collects failed items during the main loop and retries downloading them in secondary passes
+* **Playlist Index Prefixing**: Optional index numbering (`1-video1.mp4`, `2-video2.mp4`) to prevent file managers from scrambling playlist ordering
+* **Subtitle Downloader**: Download official or auto-generated subtitles with custom language selection (`en`, `es`, `fr`, etc.)
+* **Smart Directory Management**: Select existing Google Drive target folders or create nested directory paths (`Course/Module1`) on the fly
 * Three download modes:
-
   * **Video + Audio**
   * **Audio Only**
   * **Video Only**
 * Maximum video quality selection:
-
   * **Best**
   * **1080p**
   * **720p**
@@ -23,14 +24,14 @@ The notebook provides a straightforward interface for downloading YouTube conten
   * **360p**
 * Automatically selects the best available audio stream for **Audio Only**
 * Converts audio-only downloads to MP3
-* Persistent download archive stored in Google Drive
+* Persistent download archive (`download_archive.txt`) stored in Google Drive
+* Detailed human-readable log (`download_history.txt`) with timestamps, video titles, IDs, and links
 * Resume completed playlist progress across Google Colab sessions
 * **Fast Resume** mode for large sequential playlists
-* Simple `ipywidgets` interface
+* Interactive `ipywidgets` interface
 * Downloads are transferred to Google Drive after each item
-* Automatically installs required dependencies
+* Automatically installs required system dependencies (`FFmpeg`, `Node.js`) and Python packages
 * Uses `yt-dlp` for media extraction and downloading
-* Uses FFmpeg for media processing
 
 ---
 
@@ -38,11 +39,9 @@ The notebook provides a straightforward interface for downloading YouTube conten
 
 This project was created around a simple use case: downloading YouTube videos and playlists without having to configure or install a full downloader application.
 
-While working with very large playlists, interrupted download sessions can become inconvenient. Starting again may require checking a large number of already-completed items before the downloader can continue.
+While working with very large playlists, interrupted download sessions or transient network errors can become inconvenient. Starting again may require checking a large number of already-completed items, or manually identifying individual items that failed during a batch run.
 
 This project focuses specifically on YouTube and keeps the interface and implementation intentionally small.
-
-The goal is not to be a universal downloader. Instead, it provides a focused workflow for YouTube downloads, with particular attention to long-running playlist jobs and the ability to continue completed playlist progress across multiple Google Colab sessions.
 
 ---
 
@@ -79,47 +78,61 @@ Transfer completed files to Google Drive
 
 No traditional installation is required on your computer.
 
-The notebook automatically checks for and installs the required Python packages and FFmpeg when necessary.
+The notebook automatically checks for and installs the required system packages (`FFmpeg`, `Node.js`) and Python dependencies when necessary.
 
 ---
 
 ## User Interface
 
-The downloader provides five main configuration options.
+The downloader provides eight main configuration controls.
 
-### 1. YouTube URL
+### 1. YouTube URL(s)
 
-Enter either:
+Enter one of the following:
 
 * A single YouTube video URL
 * A YouTube playlist URL
+* Multiple URLs separated by a `+` symbol (e.g., `URL1 + URL2`)
 
 For example:
 
 ```text
-https://www.youtube.com/watch?v=VIDEO_ID
+[https://www.youtube.com/watch?v=VIDEO_ID](https://www.youtube.com/watch?v=VIDEO_ID)
+
 ```
 
 or:
 
 ```text
-https://www.youtube.com/playlist?list=PLAYLIST_ID
+[https://www.youtube.com/playlist?list=PLAYLIST_ID](https://www.youtube.com/playlist?list=PLAYLIST_ID)
+
 ```
 
-The notebook automatically determines whether the provided URL represents a single video or a playlist.
+or multi-target batch input:
+
+```text
+[https://www.youtube.com/watch?v=VIDEO_1](https://www.youtube.com/watch?v=VIDEO_1) + [https://www.youtube.com/watch?v=VIDEO_2](https://www.youtube.com/watch?v=VIDEO_2)
+
+```
+
+The notebook automatically extracts flat metadata to determine whether each target is a single video or a playlist.
 
 ---
 
-### 2. Folder Name
+### 2. Directory Selection (Existing Dir / Or New Path)
 
-Specify the folder where the downloaded files should be stored.
+Choose where your downloaded files will be stored in Google Drive.
 
-The folder is created under:
+* **Existing Dir**: Dropdown menu listing all existing folders inside `YouTubeDownloads`.
+* **Or New Path**: Enter a new folder name or nested directory structure using `/` (e.g., `Courses/UE5/Module1`). Text input overrides the dropdown selection if filled.
+
+The destination path in Google Drive will be:
 
 ```text
 MyDrive/
 └── YouTubeDownloads/
     └── Your Folder/
+
 ```
 
 For example:
@@ -128,12 +141,13 @@ For example:
 MyDrive/
 └── YouTubeDownloads/
     └── My Music/
-        ├── Song 01.mp3
-        ├── Song 02.mp3
+        ├── 1-Song 01.mp3
+        ├── 2-Song 02.mp3
+        ├── download_archive.txt
+        ├── download_history.txt
         └── ...
-```
 
-The folder is also used to store the persistent download archive.
+```
 
 ---
 
@@ -141,11 +155,11 @@ The folder is also used to store the persistent download archive.
 
 Choose one of the following modes:
 
-| Mode              | Description                                                      |
-| ----------------- | ---------------------------------------------------------------- |
+| Mode | Description |
+| --- | --- |
 | **Video + Audio** | Downloads video and audio and merges them into MP4 when possible |
-| **Audio Only**    | Downloads the best available audio and converts it to MP3        |
-| **Video Only**    | Downloads video without an audio track                           |
+| **Audio Only** | Downloads the best available audio and converts it to MP3 |
+| **Video Only** | Downloads video without an audio track |
 
 When **Audio Only** is selected, the downloader uses the best available audio stream and FFmpeg to convert it to MP3 at 192 kbps.
 
@@ -161,41 +175,56 @@ Best
 720p
 480p
 360p
+
 ```
 
-The selected value acts as the maximum video resolution.
+The selected value acts as the maximum video resolution limit.
 
 For example:
 
 ```text
 Maximum Quality: 720p
+
 ```
 
 allows the downloader to select the best available video stream up to 720p.
 
-Selecting:
-
-```text
-Maximum Quality: Best
-```
-
-does not impose a resolution limit.
-
-When **Audio Only** is selected, this setting does not affect the audio download. The best available audio stream is selected instead.
+Selecting `Best` does not impose a resolution limit. When **Audio Only** is selected, this setting does not affect the download.
 
 ---
 
-### 5. Fast Resume
+### 5. Subtitle Downloader
 
-**Fast Resume** is designed primarily for large playlists.
+* **Download Subtitles**: Checkbox to extract official or auto-generated subtitles alongside media files (saved as `.srt`).
+* **Sub Lang**: Text input for specifying language codes (default: `en`). Supports multiple codes like `en, es, fr`.
 
-When enabled, the downloader reads the persistent `download_archive.txt` and identifies the latest completed item in the playlist. It then skips directly to the items after it instead of checking every previous item individually.
+---
 
-This can significantly reduce the amount of work required when continuing a large playlist.
+### 6. Retry Passes (Failure-Retry Mechanism)
+
+Select how many retry passes (`1`, `2`, `3`, or `5`) to perform after the primary download loop finishes.
+
+If any item fails during the main loop (due to transient network issues or rate limits), it is gathered into a retry queue. Once the main pass completes, the downloader pauses to let rate limits cool down, then automatically attempts to download the failed items again.
+
+---
+
+### 7. Add Video Index
+
+Checkbox (enabled by default) that prefixes each file with its original position index (e.g., `1-Video Title.mp4`, `2-Video Title.mp4`).
+
+This ensures file managers and media players preserve the original playlist order without scrambling file sorting.
+
+---
+
+### 8. Fast Resume
+
+**Fast Resume** is designed primarily for large sequential playlists.
+
+When enabled, the downloader reads `download_archive.txt` and identifies the latest completed item in the playlist sequence. It then skips directly past completed items instantly instead of inspecting every item individually.
 
 #### Normal Resume
 
-Without Fast Resume, each playlist item is passed through `yt-dlp`, which uses the download archive to determine whether the item has already been completed.
+Without Fast Resume, each playlist item is passed through `yt-dlp`, which checks the archive to determine whether it has already been completed:
 
 ```text
 Playlist
@@ -209,6 +238,7 @@ Check download archive
    ├── Already downloaded → Skip
    │
    └── Not downloaded → Download
+
 ```
 
 #### Fast Resume
@@ -229,53 +259,30 @@ Skip previous items
    │
    ▼
 Continue downloading
+
 ```
-
-### Fast Resume Considerations
-
-Fast Resume is optimized for playlists that are downloaded sequentially from beginning to end.
-
-It assumes that completed downloads form a continuous sequence from the beginning of the playlist.
-
-For example:
-
-```text
-Video 1 ✓
-Video 2 ✓
-Video 3 ✓
-Video 4 ✓
-Video 5 ← Continue here
-```
-
-It is therefore recommended to use **normal resume** if:
-
-* The playlist has been significantly reordered
-* Videos have been inserted or removed
-* An earlier video failed while later videos were completed
-* You want every playlist item to be individually checked against the archive
 
 ---
 
-## Resuming Large Playlists
+## Resuming Large Playlists & Logging
 
-The downloader uses `download_archive.txt` to keep track of completed downloads.
+The downloader uses `download_archive.txt` to keep track of completed downloads and `download_history.txt` to log human-readable details.
 
-The archive is stored inside the selected Google Drive folder:
+Both files are stored inside your destination folder in Google Drive:
 
 ```text
 MyDrive/
 └── YouTubeDownloads/
     └── My Playlist/
-        ├── download_archive.txt
-        ├── Video 001.mp4
-        ├── Video 002.mp4
-        ├── Video 003.mp4
+        ├── download_archive.txt    <-- Prevents duplicate downloads
+        ├── download_history.txt    <-- Timestamped log (Title, ID, Link)
+        ├── 1-Video 001.mp4
+        ├── 2-Video 002.mp4
         └── ...
+
 ```
 
-Because the archive is stored in Google Drive rather than only in the temporary Google Colab environment, completed playlist progress remains available when the notebook is started again.
-
-For example:
+Because the archive is saved directly to Google Drive rather than only in Colab's temporary storage, progress is retained across sessions:
 
 ```text
 Session 1
@@ -283,12 +290,12 @@ Session 1
 Video 1   ✓
 Video 2   ✓
 Video 3   ✓
-Video 4   ✓
 ...
 Video 500 ✓
+
 ```
 
-If the Google Colab session ends:
+If the Colab session ends:
 
 ```text
 Session 2
@@ -298,41 +305,34 @@ Read download_archive.txt
 Recognize completed videos
         ↓
 Continue with remaining playlist items
-```
 
-This makes the downloader particularly useful for playlists containing hundreds or thousands of items.
+```
 
 ---
 
 ## Google Colab Runtime Limitations
 
-Google Colab runtimes are temporary.
-
-The downloader therefore uses two different storage locations:
+Google Colab runtimes are temporary. The downloader uses two storage locations:
 
 ### Temporary download storage
 
 ```text
 /content/YT-Temp
+
 ```
 
-Files are downloaded here first.
+Files are downloaded and processed here first.
 
 ### Persistent storage
 
 ```text
-/content/drive/MyDrive/YouTubeDownloads/
+/content/drive/MyDrive/YouTubeDownloads/<Folder>/
+
 ```
 
-Completed files are then transferred to Google Drive.
+Completed files are transferred to Google Drive immediately after each item finishes downloading.
 
-This distinction is important.
-
-The project can preserve **completed playlist progress** across Google Colab sessions through the download archive stored in Google Drive.
-
-However, it does **not** guarantee recovery of a file that was still being downloaded when the Colab runtime was terminated.
-
-For long-running downloads, it is therefore recommended to allow completed files to be transferred to Google Drive before the session ends.
+This distinction is important: completed files transferred to Google Drive remain safe, but a file currently mid-download when a Colab runtime terminates will need to be restarted on the next session.
 
 ---
 
@@ -342,106 +342,89 @@ No traditional installation is required.
 
 ### Step 1 — Download the Notebook
 
-Download:
-
-```text
-Easy-YouTube-Downloader.ipynb
-```
-
-from this repository.
+Download `Easy-YouTube-Downloader.ipynb` from this repository.
 
 ### Step 2 — Open It in Google Colab
 
-Upload the notebook to Google Colab or open the notebook from your downloaded copy.
+Upload the notebook to [Google Colab](https://colab.research.google.com/?utm_source=gemini) or open your copy directly.
 
 ### Step 3 — Run the Notebook
 
-Run the notebook from top to bottom.
+Run the notebook cells from top to bottom.
 
-The notebook automatically checks for the required dependencies and installs them if necessary:
+The notebook automatically checks for and installs all dependencies:
 
 * `yt-dlp`
 * `ipywidgets`
-* FFmpeg
+* `FFmpeg`
+* `Node.js`
 
 ### Step 4 — Configure the Downloader
 
-Fill in the interface:
+Fill in the interface fields:
 
-```text
-YouTube URL
-Folder Name
-Download Type
-Maximum Quality
-Fast Resume
-```
+* **YouTube URL(s)**
+* **Directory / Folder Name**
+* **Download Type**
+* **Maximum Quality**
+* **Subtitle Options**
+* **Retry Passes**
+* **Add Video Index**
+* **Fast Resume**
 
 ### Step 5 — Start the Download
 
-Press:
-
-```text
-Start Download
-```
-
-The notebook will mount Google Drive and begin processing the provided URL.
+Press **Start Download**. The notebook will mount Google Drive (if not already mounted) and begin processing your target links.
 
 ---
 
 ## Example
 
-Suppose you want to download a large music playlist as MP3 files.
+Suppose you want to download a large educational series with subtitles and numerical ordering.
 
 Configure the downloader like this:
 
 ```text
-YouTube URL:
-https://www.youtube.com/playlist?list=...
+YouTube URL(s):
+[https://www.youtube.com/playlist?list=](https://www.youtube.com/playlist?list=)...
 
-Folder Name:
-My Music
+Or New Path:
+Courses/Python_101
 
 Download Type:
-Audio Only
+Video + Audio
 
 Maximum Quality:
-Best
+1080p
+
+Download Subtitles:
+[X] Enabled (Lang: en)
+
+Retry Passes:
+3
+
+Add Video Index:
+[X] Enabled
 
 Fast Resume:
-Enabled
+[X] Enabled
+
 ```
 
-The files will be stored in:
+The resulting files in Google Drive:
 
 ```text
-MyDrive/YouTubeDownloads/My Music/
+MyDrive/YouTubeDownloads/Courses/Python_101/
+├── 1-Introduction to Python.mp4
+├── 1-Introduction to Python.en.srt
+├── 2-Variables and Data Types.mp4
+├── 2-Variables and Data Types.en.srt
+├── download_archive.txt
+└── download_history.txt
+
 ```
 
-If the Google Colab session is interrupted, start the notebook again and use the same folder.
-
-The existing:
-
-```text
-download_archive.txt
-```
-
-allows the downloader to recognize previously completed items and continue the playlist.
-
----
-
-## Large Playlist Testing
-
-The downloader was tested with a YouTube playlist containing approximately **2,500 items** in Audio Only mode across multiple Google Colab sessions.
-
-The test was used to verify that:
-
-* Large playlists can be processed
-* Completed items are recorded in the download archive
-* Files are transferred to Google Drive
-* Progress remains available after starting a new Colab session
-* Fast Resume can skip previously completed playlist items
-
-This project is intended to be practical for long-running playlist downloads rather than only small one-off downloads.
+If the session is interrupted, simply re-run the notebook with the same target folder to resume where you left off.
 
 ---
 
@@ -449,20 +432,17 @@ This project is intended to be practical for long-running playlist downloads rat
 
 The project uses:
 
-* **Python** — application logic
-* **Google Colab** — execution environment
-* **yt-dlp** — media extraction and downloading
-* **FFmpeg** — media processing and audio conversion
-* **ipywidgets** — interactive user interface
-* **Google Drive** — persistent file storage
-
-The project uses `yt-dlp` for the actual YouTube extraction and downloading rather than implementing its own YouTube extraction system.
+* **Python** — core application logic
+* **Google Colab** — cloud execution environment
+* **yt-dlp** — media extraction and downloading engine
+* **FFmpeg** — multimedia processing and audio conversion
+* **Node.js** — JavaScript engine for `yt-dlp` to resolve YouTube JS signature runtime requirements
+* **ipywidgets** — interactive user interface widgets
+* **Google Drive** — persistent cloud file storage
 
 ---
 
 ## Project Structure
-
-The repository intentionally contains very little:
 
 ```text
 Easy-YouTube-Downloader/
@@ -470,75 +450,40 @@ Easy-YouTube-Downloader/
 ├── README.md
 ├── LICENSE
 └── ATTRIBUTIONS.md
+
 ```
 
-The notebook contains the complete application.
+The notebook contains the complete application code.
 
 ---
 
 ## Inspiration
 
-This project was inspired by [AzuDL-GC2GD](https://github.com/TheGreatAzizi/AzuDL-GC2GD), a Google Colab-based universal downloader supporting YouTube and several other download workflows.
+This project was inspired by [AzuDL-GC2GD](https://github.com/TheGreatAzizi/AzuDL-GC2GD?utm_source=gemini), a Google Colab-based universal downloader supporting YouTube and several other download workflows.
 
-While using AzuDL primarily for YouTube downloads, I wanted a smaller and more specialized tool focused specifically on YouTube videos and playlists, particularly for long-running playlist downloads.
+While using AzuDL primarily for YouTube downloads, I wanted a smaller and more specialized tool focused specifically on YouTube videos and playlists, particularly for long-running playlist downloads with built-in retry mechanisms and playlist index ordering.
 
-Some utility and Google Colab / Google Drive handling code was adapted from the AzuDL-GC2GD implementation.
-
-The project was subsequently simplified and reorganized around a YouTube-specific workflow, including:
-
-* The downloader interface
-* Format selection
-* Quality selection
-* Playlist processing
-* Download archive handling
-* Google Drive file management
-* Fast Resume behavior
-
-AzuDL-GC2GD is distributed under the MIT License.
-
-See [ATTRIBUTIONS.md](ATTRIBUTIONS.md) for the attribution and applicable license text.
-
----
-
-## Limitations
-
-This project intentionally focuses on a narrow use case.
-
-It currently does not aim to provide:
-
-* Torrent downloading
-* Generic HTTP/FTP downloading
-* GitHub repository downloading
-* Batch downloading of unrelated URLs
-* Archive management
-* A general download history system
-* A standalone desktop application
-* A graphical desktop interface
-
-If you need a general-purpose downloader with these capabilities, a more comprehensive downloader may be more appropriate.
+Some utility and Google Colab / Google Drive handling code was adapted from the AzuDL-GC2GD implementation under the MIT License. See [ATTRIBUTIONS.md](https://www.google.com/search?q=ATTRIBUTIONS.md&utm_source=gemini) for details.
 
 ---
 
 ## Responsible Use
 
-This software is intended for downloading content that you have permission or legal rights to download.
-
-Users are responsible for complying with applicable laws, copyright restrictions, and the terms of service of the services they access.
-
-This project does not provide or distribute copyrighted media.
+This software is intended for downloading content that you have permission or legal rights to download. Users are responsible for complying with applicable laws, copyright restrictions, and the terms of service of the services they access.
 
 ---
 
 ## License
 
-This project is distributed under the **MIT License**.
-
-See [LICENSE](LICENSE) for the complete license text.
+This project is distributed under the **MIT License**. See [LICENSE](https://www.google.com/search?q=LICENSE&utm_source=gemini) for details.
 
 ## Acknowledgements
 
-* [yt-dlp](https://github.com/yt-dlp/yt-dlp) — media extraction and downloading
-* [FFmpeg](https://ffmpeg.org/) — multimedia processing
-* [AzuDL-GC2GD](https://github.com/TheGreatAzizi/AzuDL-GC2GD) — inspiration and adapted utility code for parts of the Google Colab / Google Drive workflow
-* Google Colab — notebook execution environment
-* Google Drive — persistent storage
+* [yt-dlp](https://github.com/yt-dlp/yt-dlp?utm_source=gemini) — media extraction and downloading
+* [FFmpeg](https://ffmpeg.org/?utm_source=gemini) — multimedia processing
+* [Node.js](https://nodejs.org/?utm_source=gemini) — JavaScript engine execution
+* [AzuDL-GC2GD](https://github.com/TheGreatAzizi/AzuDL-GC2GD?utm_source=gemini) — inspiration and adapted utility code for Google Colab / Google Drive workflows
+
+```
+
+```
